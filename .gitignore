@@ -1,0 +1,12 @@
+# Compiled object files
+*.o
+
+# Executable files in the bin directory
+/bin/
+
+# VS Code specific settings (user-specific)
+.vscode/launch.json
+.vscode/tasks.json
+
+# Workspace file (if it's inside the project)
+*.code-workspace
