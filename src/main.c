@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
     // --- T1: Standard SYN Packet ---
     // if targeting google (8.8.8.8) port 80 might be filtered.
     // port 53 (dns) or 443 (https) is better for external servers.
-    int target_port = 80; 
+    int target_port = 135; 
     
     if (run_probe(target_ip, target_port, TH_SYN, "T1 (SYN)", &ip_header)) {
         results.t1_open = 1;
