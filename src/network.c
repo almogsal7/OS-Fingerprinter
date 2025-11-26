@@ -1,6 +1,4 @@
-
 #define _DEFAULT_SOURCE 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +10,6 @@
 #include "network.h"
 #include "utils.h"
 
-// Helper struct for checksum calculation
 struct pseudo_header {
     u_int32_t source_address;
     u_int32_t dest_address;
@@ -21,19 +18,16 @@ struct pseudo_header {
     u_int16_t tcp_length;
 };
 
-// Generic function to send ANY combination of flags
 void send_tcp_packet(const char *target_ip, int port, int flags) {
-    // 1. Create a Raw Socket
     int sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (sock < 0) {
-        perror("Error creating socket");
-        exit(1);
+        perror("error creating socket");
+        return;
     }
 
     char packet[4096];
-    memset(packet, 0, 4096); // Clear memory
+    memset(packet, 0, 4096);
 
-    // Pointers to handle headers
     struct tcphdr *tcp = (struct tcphdr *)packet;
     struct sockaddr_in sin;
     struct pseudo_header psh;
@@ -42,28 +36,30 @@ void send_tcp_packet(const char *target_ip, int port, int flags) {
     sin.sin_port = htons(port);
     sin.sin_addr.s_addr = inet_addr(target_ip);
 
-    // 2. Fill the TCP Header
-    tcp->source = htons(12345);       // Random source port
-    tcp->dest = htons(port);          // Target port
+    // detect correct source ip for this target
+    char source_ip[32];
+    get_local_ip(source_ip, target_ip);
+    
+    // fill tcp header
+    tcp->source = htons(54321); 
+    tcp->dest = htons(port);
     tcp->seq = 0;
     tcp->ack_seq = 0;
-    tcp->doff = 5;                    // Header size
+    tcp->doff = 5;
     
-    // --- KEY PART: Set flags based on input ---
     tcp->fin = (flags & TH_FIN) ? 1 : 0;
     tcp->syn = (flags & TH_SYN) ? 1 : 0;
     tcp->rst = (flags & TH_RST) ? 1 : 0;
     tcp->psh = (flags & TH_PUSH) ? 1 : 0;
     tcp->ack = (flags & TH_ACK) ? 1 : 0;
     tcp->urg = (flags & TH_URG) ? 1 : 0;
-    // ------------------------------------------
 
-    tcp->window = htons(5840); 
-    tcp->check = 0; // Initial checksum is 0
+    tcp->window = htons(1024); 
+    tcp->check = 0;
     tcp->urg_ptr = 0;
 
-    // 3. Calculate Checksum (Pseudo header + TCP header)
-    psh.source_address = inet_addr(get_local_ip(target_ip));
+    // checksum calculation
+    psh.source_address = inet_addr(source_ip);
     psh.dest_address = sin.sin_addr.s_addr;
     psh.placeholder = 0;
     psh.protocol = IPPROTO_TCP;
@@ -78,17 +74,15 @@ void send_tcp_packet(const char *target_ip, int port, int flags) {
     tcp->check = calculate_checksum((unsigned short *)pseudogram, psize);
     free(pseudogram);
 
-    // 4. Send the packet!
     if (sendto(sock, packet, sizeof(struct tcphdr), 0, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
-        perror("Error sending packet");
-    } else {
-        printf("Packet Sent (Flags mask: %d) to %s:%d\n", flags, target_ip, port);
+        perror("error sending packet");
     }
-
+    
     close(sock);
 }
 
-struct tcphdr* receive_tcp_response(const char *target_ip, int timeout_sec) {
+// receives response and fills ip header pointer if provided
+struct tcphdr* receive_tcp_response(const char *target_ip, int timeout_sec, struct iphdr **ip_out) {
     int sock;
     static char buffer[4096]; 
     struct sockaddr_in saddr;
@@ -97,7 +91,6 @@ struct tcphdr* receive_tcp_response(const char *target_ip, int timeout_sec) {
     sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (sock < 0) return NULL;
 
-    // Set timeout
     struct timeval tv;
     tv.tv_sec = timeout_sec;
     tv.tv_usec = 0;
@@ -107,17 +100,19 @@ struct tcphdr* receive_tcp_response(const char *target_ip, int timeout_sec) {
         int data_size = recvfrom(sock, buffer, 4096, 0, (struct sockaddr*)&saddr, &saddr_size);
         if (data_size < 0) {
             close(sock);
-            return NULL; // Timeout (No reply)
+            return NULL; 
         }
 
-        // Check if the packet is from our target
         if (strcmp(inet_ntoa(saddr.sin_addr), target_ip) == 0) {
             struct iphdr *ip_header = (struct iphdr *)buffer;
             int ip_header_len = ip_header->ihl * 4;
-            
-           
             struct tcphdr *tcp_header = (struct tcphdr *)(buffer + ip_header_len);
             
+            // save pointer to ip header
+            if (ip_out) {
+                *ip_out = ip_header;
+            }
+
             close(sock);
             return tcp_header;
         }
