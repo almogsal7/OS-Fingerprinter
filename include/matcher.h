@@ -1,19 +1,13 @@
-#ifndef MATCHER_H
-#define MATCHER_H
+/*
+ * match.h - Match scan results against database
+ */
 
-#include "db_parser.h"
-#include <netinet/tcp.h>
-#include <netinet/ip.h>
+#ifndef MATCH_H
+#define MATCH_H
 
-// struct to hold our test results from the network
-typedef struct {
-    int t1_open;
-    int t1_ttl;
-    int t1_window;
-    int t3_open; // replied?
-    int t7_open; // replied?
-} HostResults;
+#include "defs.h"
 
-void find_best_match(SignatureNode *db, HostResults *results);
+/* Find and display the best matching OS fingerprints */
+void find_matches(FingerprintNode *db, ScanResult *scan);
 
 #endif

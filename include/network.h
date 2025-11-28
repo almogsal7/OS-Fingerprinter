@@ -1,18 +1,27 @@
+/*
+ * network.h - Network scanning functions
+ * 
+ * These functions send specially crafted packets and analyze responses.
+ */
+
 #ifndef NETWORK_H
 #define NETWORK_H
 
-#include <netinet/tcp.h>
-#include <netinet/ip.h>
+#include "defs.h"
 
-// tcp flags definitions if not defined
-#define TH_FIN  0x01
-#define TH_SYN  0x02
-#define TH_RST  0x04
-#define TH_PUSH 0x08
-#define TH_ACK  0x10
-#define TH_URG  0x20
+/* Send a TCP packet with specific flags */
+void send_packet(const char *target, int port, int flags);
 
-void send_tcp_packet(const char *target_ip, int port, int flags);
-struct tcphdr* receive_tcp_response(const char *target_ip, int timeout_sec, struct iphdr **ip_out);
+/* Wait for a response from target */
+struct tcphdr *wait_for_response(const char *target, int timeout, struct iphdr **ip_out);
+
+/* Check if a port is open */
+int is_port_open(const char *target, int port);
+
+/* Run all fingerprinting probes and fill in results */
+void fingerprint_target(const char *target, int port, ScanResult *result);
+
+/* Parse TCP options from a received packet */
+void read_tcp_options(struct tcphdr *tcp, char *out_str, TCPOpts *opts);
 
 #endif

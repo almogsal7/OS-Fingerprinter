@@ -1,98 +1,156 @@
-#define _DEFAULT_SOURCE 
+/*
+ * OS Fingerprinter - Main Program
+ * 
+ * This tool identifies the operating system of a remote host
+ * by analyzing how it responds to various TCP packets.
+ * 
+ * It focuses on detecting Windows, Linux, and Android devices.
+ * 
+ * Usage: sudo ./os_fingerprint <target_ip> [port]
+ * 
+ * How it works:
+ * 1. Find an open port on the target (or use the one specified)
+ * 2. Send various TCP probes and record the responses
+ * 3. Compare against a database of known OS fingerprints
+ * 4. Report the best matches
+ */
+
+#define _DEFAULT_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/wait.h>
-#include "db_parser.h"
-#include "matcher.h"
-#include "network.h"
-#include "utils.h"
 
-// function to run a test and return if we got a packet back
-// also captures ip header info if needed
-int run_probe(const char *target_ip, int port, int flags, const char *test_name, struct iphdr **ip_out) {
-    printf("   probing %-10s ... ", test_name);
-    fflush(stdout);
+#include "../include/defs.h"
+#include "../include/utils.h"
+#include "../include/network.h"
+#include "../include/db_parser.h"
+#include "../include/matcher.h"
+
+
+/* Common ports to scan */
+static int common_ports[] = {22, 80, 443, 445, 135, 8080, 3389, 8443};
+static int num_ports = 8;
+
+
+/*
+ * Try to find an open port on the target.
+ * Returns the port number, or -1 if none found.
+ */
+static int find_open_port(const char *target)
+{
+    printf("Looking for an open port...\n");
     
-    int success = 0;
-    pid_t pid = fork();
-
-    if (pid == 0) {
-        // child sends packet
-        usleep(100000); // slight delay
-        send_tcp_packet(target_ip, port, flags);
-        exit(0);
-    } else {
-        // parent listens
-        struct tcphdr *resp = receive_tcp_response(target_ip, 2, ip_out);
-        if (resp) {
-            printf("\033[1;32m[REPLY]\033[0m\n");
-            success = 1;
-        } else {
-            printf("\033[1;31m[TIMEOUT]\033[0m\n");
-            success = 0;
+    for (int i = 0; i < num_ports; i++) {
+        int port = common_ports[i];
+        printf("   Port %d: ", port);
+        fflush(stdout);
+        
+        if (is_port_open(target, port)) {
+            printf("open\n");
+            return port;
         }
-        wait(NULL);
+        printf("closed\n");
     }
-    return success;
+    
+    return -1;
 }
 
-int main(int argc, char *argv[]) {
+
+/*
+ * Print usage information.
+ */
+static void usage(const char *prog)
+{
+    printf("\n");
+    printf("OS Fingerprinter - Identify remote operating systems\n");
+    printf("\n");
+    printf("Usage: sudo %s <target_ip> [port]\n", prog);
+    printf("\n");
+    printf("Examples:\n");
+    printf("  sudo %s 192.168.1.100\n", prog);
+    printf("  sudo %s 192.168.1.100 22\n", prog);
+    printf("\n");
+}
+
+
+int main(int argc, char *argv[])
+{
+    /* Must run as root for raw sockets */
     if (getuid() != 0) {
-        printf("error: run as root (sudo).\n");
+        printf("Error: This tool requires root privileges.\n");
+        printf("Please run with: sudo %s ...\n", argv[0]);
         return 1;
     }
-    if (argc != 2) {
-        printf("usage: sudo %s <target_ip>\n", argv[0]);
+    
+    /* Need at least a target IP */
+    if (argc < 2) {
+        usage(argv[0]);
         return 1;
     }
-
-    char *target_ip = argv[1];
-    char local_ip[32];
-    get_local_ip(local_ip, target_ip); 
     
-    printf("\n=== OS Fingerprint Tool ===\n");
-    printf("Target: %s\n", target_ip);
-    printf("Local IP detected: %s\n", local_ip); // verify we are not using 127.0.0.1
-
-    SignatureNode *db = parse_nmap_db("data/nmap-os-db");
-    if (!db) return 1;
-
-    HostResults results = {0};
-    struct iphdr *ip_header = NULL;
-
-    // --- T1: Standard SYN Packet ---
-    // if targeting google (8.8.8.8) port 80 might be filtered.
-    // port 53 (dns) or 443 (https) is better for external servers.
-    int target_port = 135; 
+    char *target = argv[1];
+    int port = (argc > 2) ? atoi(argv[2]) : 0;
     
-    if (run_probe(target_ip, target_port, TH_SYN, "T1 (SYN)", &ip_header)) {
-        results.t1_open = 1;
-        if (ip_header) {
-            results.t1_ttl = ip_header->ttl;
-            // calculate window from tcp header (pointer math needed)
-            struct tcphdr *tcp = (struct tcphdr *)((char*)ip_header + (ip_header->ihl * 4));
-            results.t1_window = ntohs(tcp->window);
+    /* Seed random number generator */
+    srand(time(NULL));
+    
+    /* Print banner */
+    printf("\n");
+    printf("================================================\n");
+    printf("  OS Fingerprinter v1.0\n");
+    printf("  Target: %s\n", target);
+    printf("================================================\n");
+    printf("\n");
+    
+    /* Find an open port if not specified */
+    if (port <= 0) {
+        port = find_open_port(target);
+        
+        if (port < 0) {
+            printf("\nNo open ports found.\n");
+            printf("Trying port 80 anyway (limited results)...\n");
+            port = 80;
         }
+    }
+    
+    printf("\nUsing port %d for fingerprinting.\n\n", port);
+    
+    /* Load the fingerprint database */
+    FingerprintNode *db = load_database("data/nmap-os-db");
+    if (!db) {
+        /* Try alternate location */
+        db = load_database("/usr/share/nmap/nmap-os-db");
+    }
+    if (!db) {
+        printf("Error: Could not load fingerprint database.\n");
+        printf("Make sure nmap-os-db is in ./data/ or /usr/share/nmap/\n");
+        return 1;
+    }
+    
+    /* Run the fingerprinting probes */
+    printf("Running fingerprint probes...\n");
+    
+    ScanResult result;
+    fingerprint_target(target, port, &result);
+    
+    /* Analyze and show results */
+    if (result.got_response) {
+        find_matches(db, &result);
     } else {
-        printf("host seems down or filtered. stopping.\n");
-        free_db(db);
-        return 0;
+        printf("\nNo response from target.\n");
+        printf("The host may be:\n");
+        printf("  - Behind a firewall\n");
+        printf("  - Offline\n");
+        printf("  - Using a different port\n");
     }
-
-    // --- T3: Malformed Packet (SYN, FIN, PUSH, URG) ---
-    if (run_probe(target_ip, target_port, TH_SYN|TH_FIN|TH_PUSH|TH_URG, "T3 (SFPU)", NULL)) {
-        results.t3_open = 1;
-    }
-
-    // --- T7: Xmas Packet (FIN, PUSH, URG) ---
-    if (run_probe(target_ip, target_port, TH_FIN|TH_PUSH|TH_URG, "T7 (Xmas)", NULL)) {
-        results.t7_open = 1;
-    }
-
-    // --- Compare All Results ---
-    find_best_match(db, &results);
-
-    free_db(db);
+    
+    /* Cleanup */
+    free_database(db);
+    
+    printf("\n");
     return 0;
 }

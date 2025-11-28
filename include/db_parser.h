@@ -1,27 +1,16 @@
-#ifndef DB_PARSER_H
-#define DB_PARSER_H
+/*
+ * database.h - Load and manage the fingerprint database
+ */
 
-#define MAX_LINE_LEN 2048
+#ifndef DATABASE_H
+#define DATABASE_H
 
-// struct to hold expected values from nmap database
-typedef struct {
-    char *os_name;
-    // t1 test expectations
-    int t1_ttl;        // expected ttl
-    int t1_window;     // expected window size
-    char t1_resp;      // 'Y' for yes, 'N' for no
-    // t3 test expectations
-    char t3_resp;      // 'Y' or 'N'
-    // t7 test expectations
-    char t7_resp;      // 'Y' or 'N'
-} OSSignature;
+#include "defs.h"
 
-typedef struct SignatureNode {
-    OSSignature *data;
-    struct SignatureNode *next;
-} SignatureNode;
+/* Load fingerprints from nmap database file */
+FingerprintNode *load_database(const char *path);
 
-SignatureNode* parse_nmap_db(const char *filepath);
-void free_db(SignatureNode *head);
+/* Free all memory */
+void free_database(FingerprintNode *head);
 
 #endif
