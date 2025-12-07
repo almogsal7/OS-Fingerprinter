@@ -9,10 +9,10 @@
  * Usage: sudo ./os_fingerprint <target_ip> [port]
  * 
  * How it works:
- * 1. Find an open port on the target (or use the one specified)
- * 2. Send various TCP probes and record the responses
- * 3. Compare against a database of known OS fingerprints
- * 4. Report the best matches
+ *   1. Find an open port on the target (or use the one you specify)
+ *   2. Send T1, T2, T3 probes and record the responses
+ *   3. Compare results against the fingerprint database
+ *   4. Report the best matches
  */
 
 #define _DEFAULT_SOURCE
@@ -71,8 +71,8 @@ static void usage(const char *prog)
     printf("Usage: sudo %s <target_ip> [port]\n", prog);
     printf("\n");
     printf("Examples:\n");
-    printf("  sudo %s 192.168.1.100\n", prog);
-    printf("  sudo %s 192.168.1.100 22\n", prog);
+    printf("  sudo %s 192.168.1.100        # auto-detect port\n", prog);
+    printf("  sudo %s 192.168.1.100 22     # use specific port\n", prog);
     printf("\n");
 }
 
@@ -112,8 +112,8 @@ int main(int argc, char *argv[])
         
         if (port < 0) {
             printf("\nNo open ports found.\n");
-            printf("Trying port 80 anyway (limited results)...\n");
-            port = 80;
+            printf("Please specify a port manually or try a different target.\n");
+            return 1;
         }
     }
     

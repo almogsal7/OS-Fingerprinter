@@ -1,29 +1,42 @@
 # OS Fingerprinter Makefile
 #
-# Just run 'make' to build the project.
-# Run 'make clean' to remove build files.
+# Build with: make
+# Clean with: make clean
 
 CC = gcc
-CFLAGS = -Wall -Wextra -O2 -g
-LIBS = -lm
+CFLAGS = -Wall -Wextra -O2
+LDFLAGS = 
 
-SRC = src/main.c \
-      src/network.c \
-      src/db_parser.c \
-      src/matcher.c \
-      src/utils.c
+# Directories
+SRC_DIR = src
+INC_DIR = include
+BIN_DIR = bin
 
-TARGET = bin/os_fingerprint
+# Source files
+SRCS = $(SRC_DIR)/main.c \
+       $(SRC_DIR)/network.c \
+       $(SRC_DIR)/db_parser.c \
+       $(SRC_DIR)/matcher.c \
+       $(SRC_DIR)/utils.c
 
-all: bin $(TARGET)
+# Output
+TARGET = $(BIN_DIR)/os_fingerprint
 
-bin:
-	mkdir -p bin
+# Build
+all: $(BIN_DIR) $(TARGET)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -Iinclude -o $@ $^ $(LIBS)
+$(BIN_DIR):
+	mkdir -p $(BIN_DIR)
 
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -I$(INC_DIR) $(SRCS) -o $(TARGET) $(LDFLAGS) -lm
+
+# Clean
 clean:
-	rm -rf bin
+	rm -rf $(BIN_DIR)
 
-.PHONY: all clean
+# Install (optional)
+install: $(TARGET)
+	cp $(TARGET) /usr/local/bin/
+
+.PHONY: all clean install

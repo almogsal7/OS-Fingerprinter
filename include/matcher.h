@@ -1,13 +1,13 @@
 /*
- * match.h - Match scan results against database
+ * matcher.h - Fingerprint matching function declarations
  */
 
-#ifndef MATCH_H
-#define MATCH_H
+#ifndef MATCHER_H
+#define MATCHER_H
 
 #include "defs.h"
 
-/* Find and display the best matching OS fingerprints */
+/* Find best matching fingerprints for scan result */
 void find_matches(FingerprintNode *db, ScanResult *scan);
 
 #endif

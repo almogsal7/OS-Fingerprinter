@@ -1,7 +1,7 @@
 /*
- * match.c - Match scan results against fingerprint database
+ * matcher.c - Match scan results against fingerprint database
  * 
- * This is where we compare what we observed against known fingerprints.
+ * Here we compare what we observed against known fingerprints.
  * The goal is to find the best matches for Windows, Linux, and Android.
  */
 
@@ -81,7 +81,7 @@ static int calculate_score(Fingerprint *fp, ScanResult *scan)
 {
     int score = 0;
     
-    /* What OS type did we observe based on TTL? */
+    /* What OS type did we see based on TTL? */
     OSType observed_os = guess_os_from_ttl(scan->ttl);
     OSType fp_os = guess_os_from_name(fp->name);
     
@@ -96,7 +96,7 @@ static int calculate_score(Fingerprint *fp, ScanResult *scan)
             score -= 400;  /* Big penalty for mismatch */
     }
     
-    /* Skip non-Windows/Linux fingerprints entirely */
+    /* Skip non-Windows/Linux fingerprints */
     if (fp_os == OS_OTHER)
         return -9999;
     
@@ -169,8 +169,8 @@ static int calculate_score(Fingerprint *fp, ScanResult *scan)
     /*
      * Behavioral tests
      * 
-     * T3 is particularly useful - Windows usually doesn't respond
-     * to weird flag combinations, but Linux often does.
+     * T3 is useful - Windows usually doesn't respond
+     * to weird flags, but Linux often does.
      */
     if (fp->t3_responds) {
         int expected = (fp->t3_responds == 'Y');
@@ -225,9 +225,8 @@ void find_matches(FingerprintNode *db, ScanResult *scan)
     printf("DF flag: %c\n", scan->df_flag);
     printf("\n");
     printf("Behavioral responses:\n");
-    printf("  NULL probe: %s\n", scan->t2_responded ? "yes" : "no");
-    printf("  XMAS probe: %s\n", scan->t3_responded ? "yes" : "no");
-    printf("  ACK probe:  %s\n", scan->t4_responded ? "yes" : "no");
+    printf("  T2 (NULL): %s\n", scan->t2_responded ? "yes" : "no");
+    printf("  T3 (XMAS): %s\n", scan->t3_responded ? "yes" : "no");
     printf("\n");
     
     /* Score all fingerprints */

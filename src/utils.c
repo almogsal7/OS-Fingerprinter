@@ -114,7 +114,7 @@ void parse_range(const char *line, const char *key, int *min, int *max)
     
     p += strlen(key);
     
-    /* Look for a dash that indicates a range */
+    /* Look for a dash that says it's a range */
     const char *dash = strchr(p, '-');
     const char *end = strpbrk(p, "%)");
     

@@ -1,7 +1,7 @@
 /*
- * database.c - Load the nmap fingerprint database
+ * db_parser.c - Load the nmap fingerprint database
  * 
- * The database contains thousands of OS fingerprints.
+ * The database has thousands of OS fingerprints.
  * Each fingerprint has expected values for TTL, window size,
  * TCP options, and behavioral responses.
  */
@@ -16,7 +16,7 @@
 
 /*
  * Parse a single test line from the database.
- * These look like: T1(R=Y%DF=Y%T=80%W=FFFF%O=M5B4...)
+ * Lines look like: T1(R=Y%DF=Y%T=80%W=FFFF%O=M5B4...)
  */
 static void parse_test(const char *line, Fingerprint *fp)
 {
@@ -40,12 +40,12 @@ static void parse_test(const char *line, Fingerprint *fp)
             parse_options(tmp, &fp->opts);
         }
     }
-    /* T2 = NULL probe (no flags set) */
+    /* T2 = NULL probe (no flags) */
     else if (strncmp(line, "T2(", 3) == 0) {
         parse_string(line, "R=", tmp, sizeof(tmp));
         if (tmp[0]) fp->t2_responds = tmp[0];
     }
-    /* T3 = Weird flags probe */
+    /* T3 = XMAS probe (weird flags) */
     else if (strncmp(line, "T3(", 3) == 0) {
         parse_string(line, "R=", tmp, sizeof(tmp));
         if (tmp[0]) fp->t3_responds = tmp[0];

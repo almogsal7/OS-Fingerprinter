@@ -1,8 +1,13 @@
 /*
  * network.c - Network scanning functions
  * 
- * This is where we send packets and capture responses.
- * We use raw sockets to craft custom TCP packets.
+ * Here we send TCP packets and capture responses.
+ * We use raw sockets to craft custom packets.
+ * 
+ * Probes:
+ *   T1 - SYN to open port (main probe)
+ *   T2 - NULL packet (no flags)
+ *   T3 - XMAS packet (weird flags)
  */
 
 #define _DEFAULT_SOURCE
@@ -22,7 +27,7 @@
 #include "../include/utils.h"
 
 
-/* Pseudo header for TCP checksum calculation */
+/* Pseudo header for TCP checksum */
 struct pseudo_header {
     uint32_t src;
     uint32_t dst;
@@ -33,8 +38,8 @@ struct pseudo_header {
 
 
 /*
- * Read TCP options from a received packet.
- * Builds both a string representation and fills the opts structure.
+ * Read TCP options from a packet.
+ * Fills both a string and the opts structure.
  */
 void read_tcp_options(struct tcphdr *tcp, char *out_str, TCPOpts *opts)
 {
@@ -43,7 +48,7 @@ void read_tcp_options(struct tcphdr *tcp, char *out_str, TCPOpts *opts)
     opts->mss = -1;
     opts->window_scale = -1;
     
-    /* Options start after the fixed TCP header (20 bytes) */
+    /* Options start after the 20-byte TCP header */
     int opt_len = (tcp->doff * 4) - 20;
     if (opt_len <= 0) return;
     
@@ -55,18 +60,16 @@ void read_tcp_options(struct tcphdr *tcp, char *out_str, TCPOpts *opts)
     while (p < end) {
         unsigned char kind = *p;
         
-        /* End of options */
-        if (kind == 0) break;
+        if (kind == 0) break;       /* End of options */
         
-        /* NOP - single byte padding */
-        if (kind == 1) {
+        if (kind == 1) {            /* NOP - single byte */
             strcat(out_str, "N");
             if (idx < 31) opts->pattern[idx++] = 'N';
             p++;
             continue;
         }
         
-        /* All other options have a length byte */
+        /* Other options have a length byte */
         if (p + 1 >= end) break;
         int len = p[1];
         if (len < 2 || p + len > end) break;
@@ -116,7 +119,7 @@ void read_tcp_options(struct tcphdr *tcp, char *out_str, TCPOpts *opts)
 
 /*
  * Build TCP options for our SYN packets.
- * We include common options to look like a normal connection.
+ * We add common options to look like a normal connection.
  */
 static int build_options(unsigned char *buf)
 {
@@ -148,7 +151,7 @@ static int build_options(unsigned char *buf)
     buf[pos++] = 3;
     buf[pos++] = 10;
     
-    /* End and padding to 4-byte boundary */
+    /* End and pad to 4-byte boundary */
     buf[pos++] = 0;
     while (pos % 4) buf[pos++] = 0;
     
@@ -157,7 +160,7 @@ static int build_options(unsigned char *buf)
 
 
 /*
- * Send a TCP packet with specified flags.
+ * Send a TCP packet with the given flags.
  */
 void send_packet(const char *target, int port, int flags)
 {
@@ -177,7 +180,7 @@ void send_packet(const char *target, int port, int flags)
         opt_len = build_options(opts);
     }
     
-    /* Destination */
+    /* Set destination */
     struct sockaddr_in dst = {0};
     dst.sin_family = AF_INET;
     dst.sin_port = htons(port);
@@ -213,7 +216,7 @@ void send_packet(const char *target, int port, int flags)
     memcpy(csum_buf + sizeof(ph), packet, sizeof(struct tcphdr) + opt_len);
     tcp->check = checksum(csum_buf, sizeof(ph) + sizeof(struct tcphdr) + opt_len);
     
-    /* Send it */
+    /* Send */
     sendto(sock, packet, sizeof(struct tcphdr) + opt_len, 0,
            (struct sockaddr *)&dst, sizeof(dst));
     
@@ -270,7 +273,7 @@ int is_port_open(const char *target, int port)
     pid_t pid = fork();
     
     if (pid == 0) {
-        /* Child: send the packet after a small delay */
+        /* Child: send packet after small delay */
         usleep(50000);
         send_packet(target, port, TH_SYN);
         exit(0);
@@ -285,8 +288,11 @@ int is_port_open(const char *target, int port)
 
 
 /*
- * Run all fingerprinting probes.
- * This sends several different packets and records the responses.
+ * Run all fingerprinting probes on an open port.
+ * 
+ * T1: SYN - normal connection request (main probe)
+ * T2: NULL - packet with no flags
+ * T3: XMAS - packet with weird flags
  */
 void fingerprint_target(const char *target, int port, ScanResult *result)
 {
@@ -297,10 +303,10 @@ void fingerprint_target(const char *target, int port, ScanResult *result)
     memset(result, 0, sizeof(ScanResult));
     
     /*
-     * Probe 1: Normal SYN packet
-     * This is our main probe - we learn the most from this.
+     * T1: SYN probe
+     * This is our main probe - gives us the most info.
      */
-    printf("   Sending SYN probe... ");
+    printf("   Sending T1 (SYN) probe... ");
     fflush(stdout);
     
     pid = fork();
@@ -327,16 +333,16 @@ void fingerprint_target(const char *target, int port, ScanResult *result)
         
         read_tcp_options(tcp, result->options, &result->opts);
         
-        printf("got response (TTL=%d, Win=%d)\n", result->ttl, result->window);
+        printf("response (TTL=%d, Win=%d)\n", result->ttl, result->window);
     } else {
         printf("timeout\n");
     }
     
     /*
-     * Probe 2: NULL packet (no flags)
+     * T2: NULL probe (no flags)
      * Some systems respond, others don't.
      */
-    printf("   Sending NULL probe... ");
+    printf("   Sending T2 (NULL) probe... ");
     fflush(stdout);
     
     pid = fork();
@@ -351,10 +357,10 @@ void fingerprint_target(const char *target, int port, ScanResult *result)
     printf("%s\n", result->t2_responded ? "response" : "no response");
     
     /*
-     * Probe 3: Weird flags (SYN+FIN+PSH+URG)
-     * Windows typically ignores this, Linux may respond.
+     * T3: XMAS probe (SYN+FIN+PSH+URG)
+     * Windows usually ignores this, Linux may respond.
      */
-    printf("   Sending XMAS probe... ");
+    printf("   Sending T3 (XMAS) probe... ");
     fflush(stdout);
     
     pid = fork();
@@ -367,22 +373,4 @@ void fingerprint_target(const char *target, int port, ScanResult *result)
     result->t3_responded = (wait_for_response(target, 2, NULL) != NULL);
     wait(NULL);
     printf("%s\n", result->t3_responded ? "response" : "no response");
-    
-    /*
-     * Probe 4: ACK packet
-     * Used to check firewall behavior.
-     */
-    printf("   Sending ACK probe... ");
-    fflush(stdout);
-    
-    pid = fork();
-    if (pid == 0) {
-        usleep(100000);
-        send_packet(target, port, TH_ACK);
-        exit(0);
-    }
-    
-    result->t4_responded = (wait_for_response(target, 2, NULL) != NULL);
-    wait(NULL);
-    printf("%s\n", result->t4_responded ? "response" : "no response");
 }

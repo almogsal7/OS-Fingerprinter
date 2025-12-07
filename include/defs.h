@@ -1,10 +1,10 @@
 /*
  * defs.h - Core definitions for OS fingerprinting
  * 
- * This file contains all the basic structures we need to identify
+ * This file has all the basic structures we need to identify
  * operating systems based on their TCP/IP stack behavior.
  * 
- * We focus on: Windows, Linux, and Android TV devices.
+ * We focus on: Windows, Linux, and Android devices.
  */
 
 #ifndef DEFS_H
@@ -32,7 +32,7 @@
 
 /*
  * The three OS families we care about.
- * Each has a distinctive TTL value that helps identify it.
+ * Each has a different TTL value that helps identify it.
  */
 typedef enum {
     OS_UNKNOWN = 0,
@@ -55,7 +55,7 @@ typedef struct {
 
 /*
  * One entry from the nmap fingerprint database.
- * Contains the expected values for a specific OS version.
+ * Has the expected values for a specific OS version.
  */
 typedef struct {
     char *name;         /* OS name like "Microsoft Windows 10" */
@@ -75,8 +75,8 @@ typedef struct {
     
     /* Behavioral tests */
     char df_flag;       /* Don't Fragment: Y or N */
-    char t3_responds;   /* Does it respond to weird packets? */
-    char t2_responds;   /* Does it respond to empty packets? */
+    char t2_responds;   /* Does it respond to NULL probe? */
+    char t3_responds;   /* Does it respond to XMAS probe? */
     
 } Fingerprint;
 
@@ -87,7 +87,7 @@ typedef struct FingerprintNode {
 } FingerprintNode;
 
 /*
- * What we actually observed when scanning the target.
+ * What we actually saw when scanning the target.
  * We compare this against the database to find matches.
  */
 typedef struct {
@@ -103,8 +103,7 @@ typedef struct {
     
     /* Behavioral probe results */
     int t2_responded;   /* NULL packet probe */
-    int t3_responded;   /* Weird flags probe */
-    int t4_responded;   /* ACK probe */
+    int t3_responded;   /* XMAS flags probe */
     
 } ScanResult;
 
