@@ -1,46 +1,119 @@
 # OS Fingerprinter
 
-A C-based tool that identifies the Operating System of a remote computer.
-It uses **Raw Sockets** to send custom TCP packets and analyzes the responses to determine if the target is **Linux/Unix** or **Windows**.
+A simple tool to identify the operating system running on a remote host.
 
-## Key Features
+## What it does
 
-* **Hybrid Detection Engine:** Combines two methods for best results:
-    1.  **Database Matching:** Compares the response against the official **Nmap Database** (6,000+ signatures).
-    2.  **Behavioral Analysis:** If no exact match is found, it guesses the OS based on how it handles "illegal" packets (Heuristics).
-* **7-Stage Probe (T1-T7):** Runs a full suite of tests (SYN, Null, Xmas, ACK, etc.) similar to Nmap.
-* **Raw Sockets:** Manually constructs TCP/IP headers from scratch.
-* **Automatic IP Detection:** Automatically detects the local network interface.
+This tool sends special TCP packets to a target and analyzes the responses.
+Different operating systems have different "fingerprints" - unique patterns in
+how they respond to network traffic.
 
-## 📂 Project Structure
+We focus on detecting:
+- **Windows** (7, 10, 11, Server editions)
+- **Linux** (Ubuntu etc.)
+- **Android TV** and similar devices
 
-```text
-os_fingerprinter/
-├── bin/                  # The compiled program (executable)
-├── data/                 # External Nmap database file
-├── include/              # Header files (.h)
-├── src/                  # Source code (.c)
-│   ├── main.c            # Main logic & Test orchestration
-│   ├── network.c         # Raw socket sending/receiving
-│   ├── matcher.c         # Database matching logic
-│   ├── db_parser.c       # Loading Nmap DB
-│   └── utils.c           # Helper functions (Checksums, IP)
-└── Makefile              # Build instruction file
+## How to build
 
-How to Run
-1) Compile the project:
+```bash
 make
+```
 
-2) Run the tool: You must use sudo because creating Raw Sockets requires root privileges.
-sudo ./bin/fingerprinter <TARGET_IP>
+## How to use
 
-3) Example:
-sudo ./bin/fingerprinter 127.0.0.1
+You need to run as root (for raw socket access):
 
-How It Works (The Logic)
-The tool performs a Binary Classification (Linux vs. Windows) using the following logic:
-Phase 1: Database Search (T1) It sends a standard SYN packet. It checks the response (TTL and Window Size) against the Nmap database. If an exact match is found, it prints the specific OS version.
-Phase 2: Behavioral Analysis (T2 - T7) It sends "malformed" packets (like the Xmas Scan or Null Scan).
-Linux / Unix: Follows the strict RFC rules. It replies with a RST packet (saying "Port closed / Error").
-Windows: Ignores these packets for security reasons (Firewall drops them).
-By counting these responses, the tool decides the OS family even if the database search fails.
+```bash
+# Auto-detect port
+sudo ./bin/os_fingerprint 192.168.1.100
+
+# Specify a port
+sudo ./bin/os_fingerprint 192.168.1.100 22
+```
+
+## Requirements
+
+- Linux system
+- Root privileges
+- nmap's fingerprint database (`nmap-os-db`)
+
+Copy the database file to the `data/` folder:
+```bash
+mkdir -p data
+cp /usr/share/nmap/nmap-os-db data/
+```
+
+## How it works
+
+1. **Port scanning**: Find an open TCP port on the target
+2. **T1 (SYN probe)**: Send a normal connection request, analyze the response
+3. **T2 (NULL probe)**: Send a packet with no flags, see if target responds
+4. **T3 (XMAS probe)**: Send a packet with unusual flags
+5. **Matching**: Compare responses against thousands of known fingerprints
+
+## Probes explained
+
+| Probe | What it does | What we learn |
+|-------|--------------|---------------|
+| T1 | SYN to open port | TTL, Window size, TCP options |
+| T2 | NULL packet (no flags) | Behavioral test |
+| T3 | XMAS packet (weird flags) | Behavioral test |
+
+## Example output
+
+```
+================================================
+  OS Fingerprinter v1.0
+  Target: 192.168.1.100
+================================================
+
+Looking for an open port...
+   Port 22: open
+
+Using port 22 for fingerprinting.
+
+Loading fingerprint database... done (6000+ entries)
+
+Running fingerprint probes...
+   Sending T1 (SYN) probe... response (TTL=64, Win=65535)
+   Sending T2 (NULL) probe... no response
+   Sending T3 (XMAS) probe... no response
+
+============================================
+ Scan Results
+============================================
+TTL:     64 (Linux/Android)
+Window:  65535
+Options: M5B4NW8ST11
+DF flag: Y
+
+Behavioral responses:
+  T2 (NULL): no
+  T3 (XMAS): no
+
+============================================
+ Top 3 Matches
+============================================
+
+#1  Linux 5.4 - 5.15
+    Score: 650
+    Type:  Linux/Android
+
+#2  Ubuntu 20.04 (Linux 5.4)
+    Score: 620
+    Type:  Linux/Android
+
+#3  Android 10 - 12 (Linux 4.19 - 5.10)
+    Score: 580
+    Type:  Linux/Android
+
+--------------------------------------------
+Best guess: Linux 5.4 - 5.15
+Confidence: HIGH
+```
+
+## Notes
+
+- This tool requires an open port to work
+- Apple devices usually don't have open ports, so they can't be fingerprinted
+- The tool uses the same techniques as nmap's `-O` option
